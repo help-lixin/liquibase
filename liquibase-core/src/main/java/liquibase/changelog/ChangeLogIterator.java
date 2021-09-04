@@ -108,6 +108,7 @@ public class ChangeLogIterator {
                                 values.put(Scope.Attr.logService.name(), compositeLogService);
                                 values.put(BufferedLogService.class.getName(), bufferLog);
                                 Scope.child(values, () -> {
+                                    // 遍历所有的ChangeSet,依次调用这些方法:finishInitialization/warn/validate
                                     visitor.visit(changeSet, databaseChangeLog, env.getTargetDatabase(), reasonsAccepted);
                                 });
                                 markSeen(changeSet);

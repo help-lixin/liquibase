@@ -280,6 +280,7 @@ public class DatabaseChangeLog implements Comparable<DatabaseChangeLog>, Conditi
 
         database.setObjectQuotingStrategy(objectQuotingStrategy);
 
+        // 责任链
         ChangeLogIterator logIterator = new ChangeLogIterator(
                 this,
                 new DbmsChangeSetFilter(database),

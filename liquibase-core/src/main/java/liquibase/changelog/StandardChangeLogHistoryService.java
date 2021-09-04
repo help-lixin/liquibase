@@ -106,6 +106,9 @@ public class StandardChangeLogHistoryService extends AbstractChangeLogHistorySer
 
         Table changeLogTable = null;
         try {
+            // *****************************************************************
+            // 1. 查看表:DATABASECHANGELOG是否存在
+            // *****************************************************************
             changeLogTable = SnapshotGeneratorFactory.getInstance().getDatabaseChangeLogTable(new SnapshotControl
                 (database, false, Table.class, Column.class), database);
         } catch (LiquibaseException e) {
@@ -113,10 +116,11 @@ public class StandardChangeLogHistoryService extends AbstractChangeLogHistorySer
         }
 
         List<SqlStatement> statementsToExecute = new ArrayList<>();
-
         boolean changeLogCreateAttempted = false;
+
         Executor executor = Scope.getCurrentScope().getSingleton(ExecutorService.class).getExecutor("jdbc", database);
-        if (changeLogTable != null) {
+
+        if (changeLogTable != null) {  // 如果表存在,则对表进行验证
             boolean hasDescription = changeLogTable.getColumn("DESCRIPTION") != null;
             boolean hasComments = changeLogTable.getColumn("COMMENTS") != null;
             boolean hasTag = changeLogTable.getColumn("TAG") != null;
@@ -260,8 +264,18 @@ public class StandardChangeLogHistoryService extends AbstractChangeLogHistorySer
             }
 
 
-        } else if (!changeLogCreateAttempted) {
+        } else if (!changeLogCreateAttempted) {  // 如果表不存在,则创建表:DATABASECHANGELOG
+            // *****************************************************************
+            // 创建表:DATABASECHANGELOG,专门用于记录:changeLog的信息
+            // *****************************************************************
             executor.comment("Create Database Change Log Table");
+
+            // *****************************************************************
+            // 要注意下,CreateDatabaseChangeLogTableGenerator的泛型指定的是:CreateDatabaseChangeLogTableStatement,所以.
+            // 可以通过:CreateDatabaseChangeLogTableStatement的到:CreateDatabaseChangeLogTableGenerator
+            // CreateDatabaseChangeLogTableGenerator负责把SqlStatement转换成:SQL
+            // CreateDatabaseChangeLogTableStatement --> CreateDatabaseChangeLogTableGenerator
+            // *****************************************************************
             SqlStatement createTableStatement = new CreateDatabaseChangeLogTableStatement();
             if (!canCreateChangeLogTable()) {
                 throw new DatabaseException("Cannot create " + getDatabase().escapeTableName(getLiquibaseCatalogName
@@ -277,9 +291,14 @@ public class StandardChangeLogHistoryService extends AbstractChangeLogHistorySer
                     getDatabaseChangeLogTableName()));
         }
 
+
         for (SqlStatement sql : statementsToExecute) {
+            // 收集所有SqlGenerator的实现类,遍历验证,SqlGenerator子类上的泛型是否是:SqlStatement(CreateDatabaseChangeLogTableStatement)
+            // 如果相同,则代表支持
             if (SqlGeneratorFactory.getInstance().supports(sql, database)) {
+                // 执行SQL
                 executor.execute(sql);
+                // 提交事务
                 getDatabase().commit();
             } else {
                 Scope.getCurrentScope().getLog(getClass()).info("Cannot run " + sql.getClass().getSimpleName() + " on" +

@@ -210,24 +210,31 @@ public class Liquibase implements AutoCloseable {
     public void update(Contexts contexts, LabelExpression labelExpression, boolean checkLiquibaseTables) throws LiquibaseException {
         runInScope(() -> {
 
+            // 1. 调用:StandardLockService(DATABASECHANGELOGLOCK),进行加锁.
             LockService lockService = LockServiceFactory.getInstance().getLockService(database);
             lockService.waitForLock();
-
+            // 2. 把Database/Context/LabelExpression 都放在ChangeLogParameters里
             changeLogParameters.setContexts(contexts);
             changeLogParameters.setLabels(labelExpression);
+
 
             Operation updateOperation = null;
             BufferedLogService bufferLog = new BufferedLogService();
             DatabaseChangeLog changeLog = null;
             HubUpdater hubUpdater = null;
             try {
+                // ************************************************************************
+                // 1. 解析(XML/JSON/YAML/SQLFile),转换成业务模型:DatabaseChangeLog
+                // ************************************************************************
                 changeLog = getDatabaseChangeLog();
                 if (checkLiquibaseTables) {
+                    // 创建表DATABASECHANGELOG,并验证表信息
                     checkLiquibaseTables(true, changeLog, contexts, labelExpression);
                 }
 
                 ChangeLogHistoryServiceFactory.getInstance().getChangeLogService(database).generateDeploymentId();
 
+                // 遍历所有的ChangeSet,依次调用这些方法:finishInitialization/warn/validate
                 changeLog.validate(database, contexts, labelExpression);
 
                 //
@@ -241,10 +248,11 @@ public class Liquibase implements AutoCloseable {
                 // Make sure the Hub is available here by checking the return
                 // We do not need a connection if we are using a LoggingExecutor
                 //
+                //
                 ChangeLogIterator changeLogIterator = getStandardChangelogIterator(contexts, labelExpression, changeLog);
 
                 Connection connection = getConnection(changeLog);
-                if (connection != null) {
+                if (connection != null) { // false
                     updateOperation =
                         hubUpdater.preUpdateHub("UPDATE", "update", connection, changeLogFile, contexts, labelExpression, changeLogIterator);
                 }
@@ -252,7 +260,7 @@ public class Liquibase implements AutoCloseable {
                 //
                 // Make sure we don't already have a listener
                 //
-                if (connection != null) {
+                if (connection != null) { // false
                     changeExecListener = new HubChangeExecListener(updateOperation, changeExecListener);
                 }
 
@@ -261,6 +269,10 @@ public class Liquibase implements AutoCloseable {
                 //
                 ChangeLogIterator runChangeLogIterator = getStandardChangelogIterator(contexts, labelExpression, changeLog);
                 CompositeLogService compositeLogService = new CompositeLogService(true, bufferLog);
+
+                // ************************************************************************
+                // 重点:开始执行ChangeLog(SQL)内容了
+                // ************************************************************************
                 Scope.child(Scope.Attr.logService.name(), compositeLogService, () -> {
                     runChangeLogIterator.run(createUpdateVisitor(), new RuntimeEnvironment(database, contexts, labelExpression));
                 });
@@ -362,9 +374,17 @@ public class Liquibase implements AutoCloseable {
         return connection;
     }
 
-
+    /**
+     * 解析changeLogFile(例如:/changelogs/mysql/complete/root.changelog.xml),并,转换成业务模型(DatabaseChangeLog)
+     *
+     * @return
+     * @throws LiquibaseException
+     */
     public DatabaseChangeLog getDatabaseChangeLog() throws LiquibaseException {
+        // databaseChangeLog 解析XML/JSON/YML之后的业务模型对象.
+        // changeLogFile 待解析的数据文件.
         if (databaseChangeLog == null && changeLogFile != null) {
+            // ChangeLogParserFactory为典型的工厂模式+单例模式
             ChangeLogParser parser = ChangeLogParserFactory.getInstance().getParser(changeLogFile, resourceAccessor);
             databaseChangeLog = parser.parse(changeLogFile, changeLogParameters, resourceAccessor);
         }
@@ -1908,10 +1928,14 @@ public class Liquibase implements AutoCloseable {
 
     public void checkLiquibaseTables(boolean updateExistingNullChecksums, DatabaseChangeLog databaseChangeLog,
                                      Contexts contexts, LabelExpression labelExpression) throws LiquibaseException {
+
+        // 1. 创建或验证表(DATABASECHANGELOG)
         ChangeLogHistoryService changeLogHistoryService =
                 ChangeLogHistoryServiceFactory.getInstance().getChangeLogService(getDatabase());
         changeLogHistoryService.init();
-        if (updateExistingNullChecksums) {
+
+        //
+        if (updateExistingNullChecksums) { // true
             changeLogHistoryService.upgradeChecksums(databaseChangeLog, contexts, labelExpression);
         }
         LockServiceFactory.getInstance().getLockService(getDatabase()).init();

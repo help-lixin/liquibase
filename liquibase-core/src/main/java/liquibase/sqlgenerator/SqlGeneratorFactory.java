@@ -112,10 +112,12 @@ public class SqlGeneratorFactory {
 
         SortedSet<SqlGenerator> validGenerators = new TreeSet<>(new SqlGeneratorComparator());
 
+        // getGenerators()  是SqlGenerator集合
         for (SqlGenerator generator : getGenerators()) {
             Class clazz = generator.getClass();
             Type classType = null;
             while (clazz != null) {
+                // 验证类上的泛型是否相同
                 if (classType instanceof ParameterizedType) {
                     checkType(classType, statement, generator, database, validGenerators);
                 }

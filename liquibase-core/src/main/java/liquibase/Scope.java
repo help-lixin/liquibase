@@ -69,23 +69,32 @@ public class Scope {
         if (scopeManager == null) {
             scopeManager = new SingletonScopeManager();
         }
+
+        // 可以理解为,这里是Spring的父容器,通过父容器,加载一些常用的类实例.而子容器加载一些业务性质的类实例.
         if (scopeManager.getCurrentScope() == null) {
             Scope rootScope = new Scope();
             scopeManager.setCurrentScope(rootScope);
 
+            // rootScope创建logService-->JavaLogService的映射关系
             rootScope.values.put(Attr.logService.name(), new JavaLogService());
+            // rootScope创建resourceAccessor-->ClassLoaderResourceAccessor的映射关系
             rootScope.values.put(Attr.resourceAccessor.name(), new ClassLoaderResourceAccessor());
+            // rootScope创建serviceLocator-->StandardServiceLocator的映射关系
             rootScope.values.put(Attr.serviceLocator.name(), new StandardServiceLocator());
-
+            // rootScope创建ui-->ConsoleUIService的映射关系
             rootScope.values.put(Attr.ui.name(), new ConsoleUIService());
+
+            // 加载:LiquibaseConfiguration
             rootScope.getSingleton(LiquibaseConfiguration.class).init(rootScope);
 
+            // 重写:LogService
             LogService overrideLogService = rootScope.getSingleton(LogServiceFactory.class).getDefaultLogService();
             if (overrideLogService == null) {
                 throw new UnexpectedLiquibaseException("Cannot find default log service");
             }
             rootScope.values.put(Attr.logService.name(), overrideLogService);
 
+            // 设置优先级最高的:ServiceLocator
             //check for higher-priority serviceLocator
             ServiceLocator serviceLocator = rootScope.getServiceLocator();
             for (ServiceLocator possibleLocator : serviceLocator.findInstances(ServiceLocator.class)) {
@@ -93,7 +102,6 @@ public class Scope {
                     serviceLocator = possibleLocator;
                 }
             }
-
             rootScope.values.put(Attr.serviceLocator.name(), serviceLocator);
         }
         return scopeManager.getCurrentScope();
@@ -304,19 +312,23 @@ public class Scope {
      * The singleton is a singleton based on the root scope and the same object will be returned for all child scopes of the root.
      */
     public <T extends SingletonObject> T getSingleton(Class<T> type) {
+        // 优先从父Scope加载
         if (getParent() != null) {
             return getParent().getSingleton(type);
         }
 
+        // 父Scope不存在的情况下,自己再进行加载
         String key = type.getName();
         T singleton = get(key, type);
         if (singleton == null) {
             try {
                 try {
+                    // 尝试,通过有参(Scope),构建出Class<T> type,抛出异常的情况下,通过默认构造器,构建出Class<T> type.
                     Constructor<T> constructor = type.getDeclaredConstructor(Scope.class);
                     constructor.setAccessible(true);
                     singleton = constructor.newInstance(this);
                 } catch (NoSuchMethodException e) { //try without scope
+                    // 通过默认构造器,构建出:Class<T> type对象.
                     Constructor<T> constructor = type.getDeclaredConstructor();
                     constructor.setAccessible(true);
                     singleton = constructor.newInstance();
@@ -324,7 +336,6 @@ public class Scope {
             } catch (Exception e) {
                 throw new UnexpectedLiquibaseException(e);
             }
-
             values.put(key, singleton);
         }
         return singleton;

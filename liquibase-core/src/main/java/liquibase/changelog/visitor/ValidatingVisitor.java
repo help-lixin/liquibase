@@ -38,6 +38,16 @@ public class ValidatingVisitor implements ChangeSetVisitor {
         }
     }
 
+    /**
+     * 对preConditions部份进行解析.
+     * <preConditions>
+     *         <dbms type="mysql"/>
+     *         <sqlCheck expectedResult="1">select 1</sqlCheck>
+     *         <runningAs username="${loginUser}"/>
+     *</preConditions>
+     * @param database
+     * @param changeLog
+     */
     public void validate(Database database, DatabaseChangeLog changeLog) {
         this.database = database;
         PreconditionContainer preconditions = changeLog.getPreconditions();

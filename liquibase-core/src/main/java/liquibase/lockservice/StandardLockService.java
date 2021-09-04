@@ -97,6 +97,8 @@ public class StandardLockService implements LockService {
         if (!hasDatabaseChangeLogLockTable()) {
             try {
                 executor.comment("Create Database Lock Table");
+                // 创建表DATABASECHANGELOGLOCK
+                // CreateDatabaseChangeLogLockTableStatement --> CreateDatabaseChangeLogLockTableGenerator
                 executor.execute(new CreateDatabaseChangeLogLockTableStatement());
                 database.commit();
                 Scope.getCurrentScope().getLog(getClass()).fine(
